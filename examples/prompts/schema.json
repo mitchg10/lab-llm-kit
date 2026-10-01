@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["codes", "evidence", "confidence", "note"],
+  "properties": {
+    "codes": {"type": "array", "items": {"type": "string", "enum": ["TIME_SAVING", "TRUST_CONCERN", "POLICY", "none", "uncertain"]}},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+    "note": {"type": "string"}
+  }
+}

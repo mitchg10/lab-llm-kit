@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Lab pre-commit hook (installed by `lab new` / `lab init` into .githooks/).
+# Blocks commits that would put research data, secrets or identifiers into git.
+#
+# False positive (e.g. a pseudonym flagged as a name)? Add the term to .labscan-allow
+# and commit again. `git commit --no-verify` skips this hook — only for a confirmed
+# false positive you can't allow-list, never for real data.
+set -uo pipefail
+fail=0
+red()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; }
+warn() { printf '\033[33m! %s\033[0m\n' "$*" >&2; }
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+# 1. paths that should never be committed
+bad=$(printf '%s\n' "$staged" | grep -E '^(data|outputs)/|(^|/)\.env(\..*)?$|\.(key|pem)$|\.(sav|dta|xlsx|docx|mp3|m4a|wav|mp4)$' || true)
+if [ -n "$bad" ]; then
+  red "These files look like data, recordings or secrets and must not be committed:"
+  printf '    %s\n' $bad >&2
+  echo "    Unstage them: git restore --staged <file>" >&2
+  fail=1
+fi
+
+# 2. large files are usually data
+while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  size=$(git cat-file -s ":$f" 2>/dev/null || echo 0)
+  if [ "$size" -gt 5000000 ]; then red "$f is $((size/1000000)) MB — large files are usually data. Keep it out of git."; fail=1; fi
+done <<< "$staged"
+
+# 3. identifier scan of staged text (the version being committed, not the working copy)
+if command -v labllm >/dev/null 2>&1; then
+  tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+  n=0
+  while IFS= read -r f; do
+    case "$f" in *.md|*.txt|*.csv|*.tsv|*.json|*.jsonl|*.py|*.R|*.r|*.qmd|*.Rmd|*.ipynb|*.yaml|*.yml|*.toml|*.tex|*.vtt|*.srt)
+      mkdir -p "$tmp/$(dirname "$f")"; git show ":$f" > "$tmp/$f" 2>/dev/null && n=$((n+1));;
+    esac
+  done <<< "$staged"
+  if [ "$n" -gt 0 ]; then
+    root=$(git rev-parse --show-toplevel)
+    allow=(); [ -f "$root/.labscan-allow" ] && allow=(--allow "$root/.labscan-allow")
+    out=""; bad_scan=0
+    # prose/data files: full scan.  code files: skip patterns that code is full of (df2, ax1, big numbers).
+    for group in text code; do
+      files=()
+      while IFS= read -r p; do
+        case "$p" in
+          *.py|*.R|*.r|*.ipynb|*.qmd|*.Rmd|*.toml|*.yaml|*.yml|*.tex) [ "$group" = code ] && files+=("$p");;
+          *) [ "$group" = text ] && files+=("$p");;
+        esac
+      done < <(cd "$tmp" && find . -type f | sed 's#^\./##' | grep -vx '\.labscan-allow' | grep -vx 'uv\.lock')
+      [ "${#files[@]}" -gt 0 ] || continue
+      extra=(); [ "$group" = code ] && extra=(--ignore "netid,student_id,ip_address,date,social_handle")
+      if ! o=$(cd "$tmp" && labllm scan "${files[@]}" ${allow[@]+"${allow[@]}"} ${extra[@]+"${extra[@]}"} 2>&1); then bad_scan=1; out+="$o"$'\n'; fi
+    done
+    if [ "$bad_scan" = 1 ]; then
+      red "Possible identifiers in staged files:"
+      printf '%s\n' "$out" | grep -E '^( |✗)' >&2
+      echo "    Fix them, or add confirmed false positives (pseudonyms etc.) to .labscan-allow." >&2
+      fail=1
+    fi
+  fi
+else
+  warn "labllm not found — identifier scan skipped (fine on a laptop; it runs on the lab Mac)."
+fi
+
+[ "$fail" = 0 ] || { echo "Commit blocked by the lab pre-commit hook." >&2; exit 1; }
+exit 0

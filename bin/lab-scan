@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# lab-scan — check files for identifiers before any model sees them.
+#   lab-scan transcript.txt interviews/*.docx
+#   lab-scan data.csv --allow pseudonyms.txt --ignore date
+#   lab-scan notes.md --names roster.txt     (roster: real names; delete it afterwards)
+# Exit code 0 = nothing found, 1 = possible identifiers found.
+exec labllm scan "$@"

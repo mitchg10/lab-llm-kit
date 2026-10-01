@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "share": "disabled",
+  "model": "ollama/__LAB_AGENT_MODEL__",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (this Mac)",
+      "options": { "baseURL": "http://127.0.0.1:11434/v1" },
+      "models": {}
+    },
+    "lmstudio": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LM Studio (this Mac)",
+      "options": { "baseURL": "http://127.0.0.1:1234/v1" },
+      "models": {}
+    },
+    "cornell": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Cornell AI Gateway",
+      "options": {
+        "baseURL": "__CORNELL_AI_BASE_URL__",
+        "apiKey": "{env:CORNELL_AI_API_KEY}"
+      },
+      "models": {}
+    }
+  }
+}

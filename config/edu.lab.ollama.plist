@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent that keeps `ollama serve` running for the lab account, with the
+  shared model store and localhost-only binding. Installed to
+  ~/Library/LaunchAgents/edu.lab.ollama.plist by setup/03-configure.sh
+  (placeholders __X__ are filled in there). Do NOT also run the Ollama.app
+  menu-bar server or `brew services start ollama` — two servers fight over :11434.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>                <string>edu.lab.ollama</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__OLLAMA_BIN__</string>
+    <string>serve</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>OLLAMA_HOST</key>              <string>127.0.0.1:11434</string>
+    <key>OLLAMA_MODELS</key>            <string>__LAB_ROOT__/models/ollama</string>
+    <!-- 64k context: agents (Claude Code, Codex, OpenCode) need >= 32k, ideally 64k -->
+    <key>OLLAMA_CONTEXT_LENGTH</key>    <string>65536</string>
+    <!-- 192-256 GB unified memory: a few models resident, a couple of requests each -->
+    <key>OLLAMA_MAX_LOADED_MODELS</key> <string>3</string>
+    <key>OLLAMA_NUM_PARALLEL</key>      <string>2</string>
+    <key>OLLAMA_KEEP_ALIVE</key>        <string>30m</string>
+    <key>OLLAMA_FLASH_ATTENTION</key>   <string>1</string>
+    <key>OLLAMA_KV_CACHE_TYPE</key>     <string>q8_0</string>
+    <key>OLLAMA_NOPRUNE</key>           <string>1</string>
+  </dict>
+  <key>RunAtLoad</key>            <true/>
+  <key>KeepAlive</key>            <true/>
+  <key>StandardOutPath</key>      <string>__LAB_ROOT__/logs/ollama.log</string>
+  <key>StandardErrorPath</key>    <string>__LAB_ROOT__/logs/ollama.log</string>
+</dict>
+</plist>

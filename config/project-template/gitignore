@@ -1,0 +1,27 @@
+# --- Never commit research data or results -------------------------------------
+# Data and model outputs stay on this Mac / protocol-approved storage, not in git
+# or on GitHub (GitHub is an external service under the lab constitution).
+data/
+outputs/
+*.sav
+*.dta
+*.xlsx
+*.docx
+*.pdf
+*.mp3
+*.m4a
+*.wav
+*.mp4
+*.zip
+
+# --- Secrets -------------------------------------------------------------------
+.env
+.env.*
+*.key
+*.pem
+
+# --- Environments and caches ----------------------------------------------------
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store

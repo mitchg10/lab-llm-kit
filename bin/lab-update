@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# lab-update — update the kit, the tools and the agents, then re-sync.
+#   lab-update            everything
+#   lab-update kit        just pull the kit + lab-sync (constitution/skills changes)
+#   lab-update tools      brew / nvm / npm agents / uv tools
+set -euo pipefail
+what="${1:-all}"
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+# shellcheck disable=SC1091
+. "$NVM_DIR/nvm.sh"
+say() { printf '\n\033[1m== %s ==\033[0m\n' "$*"; }
+
+if [ "$what" = all ] || [ "$what" = kit ]; then
+  say "Kit"
+  if [ -d "$LAB_KIT/.git" ]; then git -C "$LAB_KIT" pull --ff-only
+  else echo "  Kit isn't a git checkout; copy the new version over $LAB_KIT, then continue."; fi
+  (cd "$LAB_KIT/labllm" && uv tool install --force --editable . >/dev/null) && echo "  labllm refreshed"
+fi
+
+if [ "$what" = all ] || [ "$what" = tools ]; then
+  say "Homebrew (Ollama, LM Studio)"
+  brew update >/dev/null && brew upgrade ollama jq git gh || true
+  brew upgrade --cask lm-studio || true
+  launchctl kickstart -k "gui/$(id -u)/edu.lab.ollama" && echo "  Ollama restarted"
+
+  say "Node + agents (nvm / npm)"
+  nvm install --lts --reinstall-packages-from=current >/dev/null && nvm alias default 'lts/*' >/dev/null
+  npm install -g --no-fund --no-audit opencode-ai@latest @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest >/dev/null
+  echo "  node $(node --version); agents updated"
+
+  say "uv + Python tools"
+  uv self update >/dev/null 2>&1 || true
+  uv tool upgrade --all
+fi
+
+say "Sync"
+"$LAB_KIT/bin/lab-sync"
+"$LAB_KIT/bin/lab-models" link-lmstudio

@@ -1,0 +1,43 @@
+# lab-login — identify yourself (run logs + git commits) and optionally load your
+# Cornell AI Gateway key and GitHub token, for THIS terminal window only.
+# Nothing is written to disk.
+#
+#   lab-login        (an alias defined in lab.env that runs `source $LAB_KIT/bin/lab-login`;
+#                     it has to be sourced so the settings land in your current window)
+#
+# Why not save the key? Everyone shares this macOS account, so anything saved
+# (files, Keychain, shell history) is readable by every lab member.
+
+printf 'Your NetID: '
+read -r LAB_USER
+export LAB_USER
+printf 'Your full name (for git commits): '
+read -r _n
+printf 'Email for git commits [%s@cornell.edu]: ' "$LAB_USER"
+read -r _e
+_e="${_e:-$LAB_USER@cornell.edu}"
+# Git identity for THIS window only: commits are attributed to you, not to the shared account.
+export GIT_AUTHOR_NAME="$_n" GIT_COMMITTER_NAME="$_n" GIT_AUTHOR_EMAIL="$_e" GIT_COMMITTER_EMAIL="$_e"
+unset _n _e
+
+printf 'Cornell AI Gateway key (press Return to skip; input is hidden): '
+stty -echo 2>/dev/null; read -r _k; stty echo 2>/dev/null; echo
+if [ -n "$_k" ]; then
+  export CORNELL_AI_API_KEY="$_k"
+  echo "✓ Cornell key loaded for this window. Close the window to forget it."
+  case "$CORNELL_AI_BASE_URL" in *\[*) echo "! CORNELL_AI_BASE_URL is still a placeholder in config/lab.env — ask the lab admin.";; esac
+fi
+unset _k
+
+printf 'GitHub token for pushing your repos (press Return to skip; hidden): '
+stty -echo 2>/dev/null; read -r _g; stty echo 2>/dev/null; echo
+if [ -n "$_g" ]; then
+  export GH_TOKEN="$_g"   # used by `gh` and by git (credential helper set in lab-sync); never saved
+  echo "✓ GitHub token loaded for this window."
+fi
+unset _g
+# keep the key out of shell history files for this session
+unset HISTFILE 2>/dev/null
+export PS1="[${LAB_USER}] ${PS1:-%# }"
+echo "✓ Logged in as $LAB_USER ($GIT_AUTHOR_NAME). Your projects: $LAB_PROJECTS/$LAB_USER"
+mkdir -p "$LAB_PROJECTS/$LAB_USER" && cd "$LAB_PROJECTS/$LAB_USER" || true

@@ -1,0 +1,349 @@
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""lab-models — one place to see, download and share models across Ollama,
+Hugging Face and LM Studio on the lab Mac.
+
+Every model is stored ONCE:
+  Ollama weights   -> $OLLAMA_MODELS   (GGUF blobs)
+  Hugging Face     -> $HF_HOME         (MLX / safetensors / GGUF repos)
+LM Studio gets symlinks to both (`link-lmstudio`), so it never re-downloads.
+
+Commands
+  list                      what's installed, in each store
+  pull ollama <name>        e.g. pull ollama qwen3:30b
+  pull hf <org/repo>        e.g. pull hf mlx-community/Qwen3-30B-A3B-4bit
+  pull-list [file]          pull everything in config/models.txt
+  make-lab-variants         build `lab-<model>` chat models: same weights + the lab's DEFAULT chat prompt
+  link-lmstudio             expose Ollama + HF models inside LM Studio (symlinks, no copies)
+  du                        disk use per store
+  cornell                   list models on the Cornell AI Gateway (needs `lab-login`)
+  recommend                 what fits in this Mac's memory
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+ENV = os.environ
+LAB_ROOT = Path(ENV.get("LAB_ROOT", "/Users/Shared/lab-llm"))
+LAB_KIT = Path(ENV.get("LAB_KIT", LAB_ROOT / "kit"))
+OLLAMA_MODELS = Path(ENV.get("OLLAMA_MODELS", LAB_ROOT / "models/ollama"))
+HF_HOME = Path(ENV.get("HF_HOME", LAB_ROOT / "models/huggingface"))
+LMSTUDIO_MODELS = Path(ENV.get("LMSTUDIO_MODELS", LAB_ROOT / "models/lmstudio"))
+OLLAMA_BASE_URL = ENV.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+SYSTEM_PROMPT = Path(ENV.get("LAB_DEFAULT_CHAT_PROMPT", LAB_KIT / "constitution/DEFAULT_CHAT_PROMPT.md"))
+
+MODEL_LAYER = "application/vnd.ollama.image.model"
+PROJECTOR_LAYER = "application/vnd.ollama.image.projector"
+LINK_NS = "ollama"  # LM Studio "publisher" folder for linked Ollama models
+
+
+def c(txt, code):  # colour
+    return f"\033[{code}m{txt}\033[0m" if sys.stdout.isatty() else txt
+
+
+def human(n: float) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{n:.0f} {unit}" if unit in ("B", "KB") else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} PB"
+
+
+# ---------------------------------------------------------------- Ollama store
+def ollama_manifests(root: Path = OLLAMA_MODELS):
+    """Yield (display_name, manifest_dict) for every model in the Ollama store.
+
+    Layout: manifests/<host>/<namespace>/<model>/<tag>
+    """
+    mroot = root / "manifests"
+    if not mroot.is_dir():
+        return
+    for tag_file in sorted(mroot.glob("*/*/*/*")):
+        if not tag_file.is_file():
+            continue
+        host, ns, model, tag = tag_file.relative_to(mroot).parts
+        if host == "registry.ollama.ai" and ns == "library":
+            name = f"{model}:{tag}"
+        elif host == "registry.ollama.ai":
+            name = f"{ns}/{model}:{tag}"
+        else:
+            name = f"{host}/{ns}/{model}:{tag}"
+        try:
+            yield name, json.loads(tag_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+
+
+def blob_path(digest: str, root: Path = OLLAMA_MODELS) -> Path:
+    return root / "blobs" / digest.replace(":", "-")
+
+
+def layer(manifest: dict, media_type: str):
+    for lay in manifest.get("layers", []):
+        if lay.get("mediaType") == media_type:
+            return lay
+    return None
+
+
+# -------------------------------------------------------------------- HF store
+def hf_repos(root: Path = HF_HOME):
+    """Yield (repo_id, snapshot_dir, size_bytes) for cached HF model repos."""
+    hub = root / "hub"
+    if not hub.is_dir():
+        return
+    for d in sorted(hub.glob("models--*")):
+        repo = d.name[len("models--"):].replace("--", "/", 1)
+        snaps = sorted((d / "snapshots").glob("*"), key=lambda p: p.stat().st_mtime)
+        if not snaps:
+            continue
+        size = sum(f.stat().st_size for f in (d / "blobs").glob("*") if f.is_file())
+        yield repo, snaps[-1], size
+
+
+# -------------------------------------------------------------------- commands
+def cmd_list(_args):
+    print(c("Ollama", "1"), f"({OLLAMA_MODELS})")
+    seen = False
+    for name, m in ollama_manifests():
+        lay = layer(m, MODEL_LAYER)
+        size = human(lay["size"]) if lay else "?"
+        tag = c(" [chat variant: default lab prompt]", "32") if name.startswith("lab-") else ""
+        print(f"  {name:<40} {size:>9}{tag}")
+        seen = True
+    if not seen:
+        print("  (none)")
+    print(c("Hugging Face", "1"), f"({HF_HOME})")
+    seen = False
+    for repo, _snap, size in hf_repos():
+        print(f"  {repo:<40} {human(size):>9}")
+        seen = True
+    if not seen:
+        print("  (none)")
+    print(c("LM Studio", "1"), f"({LMSTUDIO_MODELS})")
+    links = sorted(p for p in LMSTUDIO_MODELS.glob("*/*") if p.exists() or p.is_symlink())
+    for p in links:
+        linked = any(q.is_symlink() for q in [p, *p.glob("*")])
+        print(f"  {p.parent.name}/{p.name:<32} {'(linked, no copy)' if linked else '(LM Studio download)'}")
+    if not links:
+        print("  (none)")
+
+
+def run(cmd: list[str]) -> int:
+    print(c("$ " + " ".join(cmd), "2"))
+    return subprocess.call(cmd)
+
+
+def cmd_pull(args):
+    if len(args) != 2 or args[0] not in ("ollama", "hf"):
+        sys.exit("usage: lab-models pull ollama <name> | pull hf <org/repo>")
+    src, name = args
+    if src == "ollama":
+        rc = run(["ollama", "pull", name])
+    else:
+        hf = shutil.which("hf") or shutil.which("huggingface-cli")
+        if not hf:
+            sys.exit("Hugging Face CLI not found (uv tool install 'huggingface_hub[cli]')")
+        rc = run([hf, "download", name])
+    if rc == 0:
+        print(c(f"✓ {name}", "32"), "— run `lab-models link-lmstudio` to see it in LM Studio")
+    return rc
+
+
+def parse_model_list(path: Path):
+    for raw in path.read_text().splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] in ("ollama", "hf"):
+            yield parts[0], parts[1]
+
+
+def cmd_pull_list(args):
+    path = Path(args[0]) if args else LAB_KIT / "config/models.txt"
+    failed = []
+    for src, name in parse_model_list(path):
+        if cmd_pull([src, name]) != 0:
+            failed.append(name)
+    if failed:
+        print(c("Failed: " + ", ".join(failed), "31"))
+        return 1
+    return 0
+
+
+def lab_variant_name(base: str) -> str:
+    return "lab-" + base.split("/")[-1]
+
+
+def eligible_for_variant(name: str) -> bool:
+    n = name.lower()
+    return not (n.startswith("lab-") or "embed" in n or "coder" in n)
+
+
+def modelfile_for(base: str, system_prompt: str) -> str:
+    sp = system_prompt.replace('"""', "'''")  # Modelfile has no escape for triple quotes
+    return f'FROM {base}\nSYSTEM """{sp.strip()}"""\n'
+
+
+def cmd_make_lab_variants(args):
+    """Create lab-<model> chat variants for every general-purpose Ollama model.
+
+    Ollama shares weight blobs between models, so a variant adds only a tiny
+    layer holding the default chat prompt. It is a DEFAULT: any request that
+    sends its own system message replaces it. For API/analysis work use the
+    plain model (e.g. qwen3:30b) so only your own prompts are in play.
+    """
+    if not SYSTEM_PROMPT.is_file():
+        sys.exit(f"System prompt not found: {SYSTEM_PROMPT}")
+    sp = SYSTEM_PROMPT.read_text()
+    bases = args or [n for n, _ in ollama_manifests() if eligible_for_variant(n)]
+    if not bases:
+        print("No base models found. Pull some first (lab-models pull-list).")
+        return 0
+    tmp = LAB_ROOT / "build" / "Modelfile.tmp"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    rc_all = 0
+    for base in bases:
+        tmp.write_text(modelfile_for(base, sp))
+        target = lab_variant_name(base)
+        rc = run(["ollama", "create", target, "-f", str(tmp)])
+        rc_all |= rc
+        if rc == 0:
+            print(c(f"✓ {target}", "32"), f"(= {base} + default chat prompt)")
+    tmp.unlink(missing_ok=True)
+    return rc_all
+
+
+def safe(s: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", s).strip("-")
+
+
+def cmd_link_lmstudio(_args, ollama_root: Path = OLLAMA_MODELS, hf_root: Path = HF_HOME,
+                      lms_root: Path = LMSTUDIO_MODELS):
+    """Symlink Ollama GGUF blobs and HF snapshots into LM Studio's folder layout
+    (<publisher>/<model>/<file>). Removes links whose targets disappeared."""
+    lms_root.mkdir(parents=True, exist_ok=True)
+    made, digests = 0, set()
+
+    # base models first, so a shared blob is named after the base, not its lab- variant
+    for name, m in sorted(ollama_manifests(ollama_root), key=lambda x: (x[0].startswith("lab-"), x[0])):
+        lay = layer(m, MODEL_LAYER)
+        if not lay:
+            continue
+        if lay["digest"] in digests:          # lab- variants share weights; link once
+            continue
+        digests.add(lay["digest"])
+        src = blob_path(lay["digest"], ollama_root)
+        if not src.is_file():
+            continue
+        slug = safe(name.replace(":", "-").split("/")[-1])
+        d = lms_root / LINK_NS / slug
+        d.mkdir(parents=True, exist_ok=True)
+        made += _link(src, d / f"{slug}.gguf")
+        proj = layer(m, PROJECTOR_LAYER)      # vision models need their projector beside them
+        if proj and blob_path(proj["digest"], ollama_root).is_file():
+            made += _link(blob_path(proj["digest"], ollama_root), d / f"mmproj-{slug}.gguf")
+
+    for repo, snap, _size in hf_repos(hf_root):
+        org, _, model = repo.partition("/")
+        dest = lms_root / safe(org) / safe(model)
+        if dest.exists() and not dest.is_symlink():
+            continue                           # a real LM Studio download — leave it
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        made += _link(snap, dest)
+
+    removed = 0
+    for dirpath, dirnames, filenames in os.walk(lms_root):   # does not descend into linked dirs
+        for n in dirnames + filenames:
+            p = Path(dirpath) / n
+            if p.is_symlink() and not p.exists():
+                p.unlink()
+                removed += 1
+    for d in sorted(lms_root.glob("*/*"), reverse=True):
+        if d.is_dir() and not d.is_symlink() and not any(d.iterdir()):
+            d.rmdir()
+    print(c("✓", "32"), f"LM Studio links: {made} new, {removed} stale removed ({lms_root})")
+    return 0
+
+
+def _link(src: Path, dst: Path) -> int:
+    if dst.is_symlink():
+        if os.readlink(dst) == str(src):
+            return 0
+        dst.unlink()
+    elif dst.exists():
+        return 0
+    dst.symlink_to(src)
+    return 1
+
+
+def dir_size(p: Path) -> int:
+    total = 0
+    for f in p.rglob("*"):
+        try:
+            if f.is_file() and not f.is_symlink():
+                total += f.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def cmd_du(_args):
+    for label, p in (("Ollama", OLLAMA_MODELS), ("Hugging Face", HF_HOME), ("LM Studio (own downloads)", LMSTUDIO_MODELS)):
+        print(f"  {label:<28} {human(dir_size(p)) if p.exists() else '—':>10}  {p}")
+    free = shutil.disk_usage(LAB_ROOT if LAB_ROOT.exists() else "/").free
+    print(f"  {'Free disk':<28} {human(free):>10}")
+
+
+def cmd_cornell(_args):
+    base = ENV.get("CORNELL_AI_BASE_URL", "")
+    key = ENV.get("CORNELL_AI_API_KEY", "")
+    if not key or "[" in base:
+        sys.exit("Run `lab-login` first (and set CORNELL_AI_BASE_URL in config/lab.env).")
+    req = urllib.request.Request(base.rstrip("/") + "/models", headers={"Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        data = json.load(r)
+    for m in sorted(x["id"] for x in data.get("data", [])):
+        print(" ", m)
+    print("\nAdd the ones you want to config/cornell-models.txt, then run lab-sync.")
+
+
+def cmd_recommend(_args):
+    try:
+        mem = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"])) / 2**30
+    except Exception:
+        mem = 0
+    print(f"Unified memory: {mem:.0f} GB. By default macOS lets the GPU use ~75% of it.\n")
+    print("Rough memory use of 4-bit (Q4) models, including a 32k context:")
+    rows = [("7–9B", 8), ("14B", 12), ("27–32B dense", 24), ("30B MoE (e.g. qwen3:30b)", 22),
+            ("70B dense", 48), ("120B MoE (gpt-oss:120b)", 70), ("235B MoE", 140)]
+    for label, gb in rows:
+        fits = "fits" if mem == 0 or gb < mem * 0.75 else "too big"
+        print(f"  {label:<28} ~{gb:>4} GB   {fits}")
+    print("\nEdit config/models.txt to change the lab's standard set.")
+
+
+COMMANDS = {
+    "list": cmd_list, "ls": cmd_list, "pull": cmd_pull, "pull-list": cmd_pull_list,
+    "make-lab-variants": cmd_make_lab_variants, "link-lmstudio": cmd_link_lmstudio,
+    "du": cmd_du, "cornell": cmd_cornell, "recommend": cmd_recommend,
+}
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print(__doc__)
+        sys.exit(0)
+    cmd = COMMANDS.get(sys.argv[1])
+    if not cmd:
+        sys.exit(f"unknown command '{sys.argv[1]}'. Try: lab-models help")
+    sys.exit(cmd(sys.argv[2:]) or 0)

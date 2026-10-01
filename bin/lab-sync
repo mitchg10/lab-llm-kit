@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# lab-sync — push the kit's constitution, skills and agent configs out to every agent.
+# Run after editing anything in the kit (or after `lab-update`). Safe to re-run.
+#
+#   lab-sync            do everything
+#   lab-sync --quiet    less output
+#   lab-sync --check    report what's out of date, change nothing
+set -euo pipefail
+
+LAB_ROOT="${LAB_ROOT:-/Users/Shared/lab-llm}"
+# shellcheck disable=SC1091
+[ -z "${LAB_KIT:-}" ] && . "$LAB_ROOT/kit/config/lab.env"
+KIT="$LAB_KIT"
+QUIET=0; CHECK=0
+for a in "$@"; do case "$a" in --quiet) QUIET=1;; --check) CHECK=1;; -h|--help) sed -n '2,8p' "$0"; exit 0;; esac; done
+
+say()  { [ "$QUIET" = 1 ] || printf '  \033[32m✓\033[0m %s\n' "$*"; }
+note() { printf '  \033[33m!\033[0m %s\n' "$*" >&2; }
+stamp="$(date +%Y%m%d-%H%M%S)"
+backup_dir="$LAB_ROOT/backups/$stamp"
+changes=0
+
+backup() {  # move a user-edited file aside before we replace it
+  local f="$1"; [ -e "$f" ] || [ -L "$f" ] || return 0
+  mkdir -p "$backup_dir"; mv "$f" "$backup_dir/$(echo "$f" | sed "s#^$HOME/##; s#/#__#g")"
+  note "Backed up $f → $backup_dir/"
+}
+
+link() {  # link TARGET LINKPATH  (replace only symlinks we own; back up anything else)
+  local target="$1" path="$2"
+  if [ -L "$path" ] && [ "$(readlink "$path")" = "$target" ]; then return 0; fi
+  changes=$((changes+1)); [ "$CHECK" = 1 ] && { note "would link $path"; return 0; }
+  mkdir -p "$(dirname "$path")"
+  if [ -L "$path" ]; then rm "$path"; else backup "$path"; fi
+  ln -s "$target" "$path"
+}
+
+write_if_changed() {  # write_if_changed DEST < content
+  local dest="$1" tmp; tmp="$(mktemp)"; cat > "$tmp"
+  if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then rm "$tmp"; return 0; fi
+  changes=$((changes+1)); [ "$CHECK" = 1 ] && { note "would update $dest"; rm "$tmp"; return 0; }
+  mkdir -p "$(dirname "$dest")"
+  [ -f "$dest" ] && { mkdir -p "$backup_dir"; cp "$dest" "$backup_dir/$(echo "$dest" | sed "s#^$HOME/##; s#/#__#g")"; }
+  mv "$tmp" "$dest"
+}
+
+# ---- 1. Constitution → every agent's global instructions file ---------------
+mkdir -p "$LAB_ROOT/build"
+write_if_changed "$LAB_ROOT/build/AGENTS.md" < <(cat "$KIT/config/agents/AGENT_CONTEXT.md" "$KIT/constitution/LAB_CONSTITUTION.md")
+agent_files=("$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md" "$HOME/.gemini/GEMINI.md" "$HOME/.config/opencode/AGENTS.md")
+if [ "${LAB_AGENT_CONSTITUTION:-on}" = on ]; then
+  for f in "${agent_files[@]}"; do link "$LAB_ROOT/build/AGENTS.md" "$f"; done
+  say "Constitution linked into Claude Code, Codex, Gemini CLI, OpenCode (agent context)"
+else
+  for f in "${agent_files[@]}"; do
+    if [ -L "$f" ] && [ "$(readlink "$f")" = "$LAB_ROOT/build/AGENTS.md" ]; then
+      changes=$((changes+1)); [ "$CHECK" = 1 ] || rm "$f"
+    fi
+  done
+  say "Constitution NOT given to agents (LAB_AGENT_CONSTITUTION=off)"
+fi
+
+# ---- 2. Skills → ~/.agents/skills (Codex, Gemini, OpenCode) + ~/.claude/skills --
+skill_dirs=("$HOME/.agents/skills" "$HOME/.claude/skills")
+n=0
+for src_root in "$KIT/skills" "$LAB_ROOT/skills-local"; do
+  [ -d "$src_root" ] || continue
+  for d in "$src_root"/*/; do
+    [ -d "$d" ] || continue   # empty folder: glob didn't match
+    d="${d%/}"; name="$(basename "$d")"
+    [[ "$name" == _* ]] && continue
+    if [ ! -f "$d/SKILL.md" ]; then note "skip $name: no SKILL.md"; continue; fi
+    fm_name="$(awk '/^---/{c++; next} c==1 && /^name:/{sub(/^name:[ ]*/,""); print; exit}' "$d/SKILL.md")"
+    if [ "$fm_name" != "$name" ]; then note "skip $name: frontmatter name '$fm_name' must equal folder name"; continue; fi
+    for sd in "${skill_dirs[@]}"; do link "$d" "$sd/$name"; done
+    n=$((n+1))
+  done
+done
+# prune links to skills that were removed from the kit
+for sd in "${skill_dirs[@]}"; do
+  [ -d "$sd" ] || continue
+  for l in "$sd"/*; do
+    [ -L "$l" ] || continue   # also skips the literal glob when empty
+    t="$(readlink "$l")"
+    case "$t" in "$KIT/skills/"*|"$LAB_ROOT/skills-local/"*)
+      [ -e "$t" ] || { [ "$CHECK" = 1 ] && note "would remove stale $l" || { rm "$l"; note "removed stale skill link $l"; }; } ;;
+    esac
+  done
+done
+say "$n skills linked for all agents"
+
+# ---- 3. Agent configs -------------------------------------------------------
+cornell_model_tagged() {  # first model id in cornell-models.txt carrying TAG
+  { grep -Ev '^\s*(#|$)' "$KIT/config/cornell-models.txt" 2>/dev/null || true; } | awk -v t="$1" '{for(i=2;i<=NF;i++) if($i==t){print $1; exit}}'
+}
+cornell_agent="$(cornell_model_tagged agent)"; cornell_agent="${cornell_agent:-SET-ME-in-cornell-models.txt}"
+lmstudio_agent="${LAB_LMSTUDIO_AGENT_MODEL:-qwen/qwen3-coder-30b}"
+
+write_if_changed "$HOME/.codex/config.toml" < <(sed \
+    -e "s#__LAB_AGENT_MODEL__#$LAB_AGENT_MODEL#g" \
+    -e "s#__LMSTUDIO_AGENT_MODEL__#$lmstudio_agent#g" \
+    -e "s#__CORNELL_AI_BASE_URL__#$CORNELL_AI_BASE_URL#g" \
+    -e "s#__CORNELL_AGENT_MODEL__#$cornell_agent#g" \
+    "$KIT/config/agents/codex-config.toml")
+say "Codex config (profiles: default=local, lmstudio, cornell)"
+
+if command -v jq >/dev/null; then
+  models_json() {  # list of ids -> {"id":{"name":"id"},...}
+    jq -Rn '[inputs | select(length>0)] | map({key:., value:{name:.}}) | from_entries'
+  }
+  ollama_ids="$(curl -fsS -m 3 "$OLLAMA_BASE_URL/v1/models" 2>/dev/null | jq -r '.data[].id' 2>/dev/null | sort || true)"
+  [ -z "$ollama_ids" ] && ollama_ids="$LAB_AGENT_MODEL"
+  lms_ids="$(curl -fsS -m 3 "$LMSTUDIO_BASE_URL/v1/models" 2>/dev/null | jq -r '.data[].id' 2>/dev/null | sort || true)"
+  cornell_ids="$(grep -Ev '^\s*(#|$)' "$KIT/config/cornell-models.txt" 2>/dev/null | awk '{print $1}' || true)"
+
+  write_if_changed "$HOME/.config/opencode/opencode.json" < <(
+    sed -e "s#__LAB_AGENT_MODEL__#$LAB_AGENT_MODEL#g" -e "s#__CORNELL_AI_BASE_URL__#$CORNELL_AI_BASE_URL#g" \
+      "$KIT/config/agents/opencode.json" \
+  | jq --argjson o "$(printf '%s\n' "$ollama_ids" | models_json)" \
+       --argjson l "$(printf '%s\n' "$lms_ids" | models_json)" \
+       --argjson c "$(printf '%s\n' "$cornell_ids" | models_json)" \
+       '.provider.ollama.models=$o | .provider.lmstudio.models=$l | .provider.cornell.models=$c
+        | if ($l|length)==0 then del(.provider.lmstudio) else . end
+        | if ($c|length)==0 then del(.provider.cornell) else . end')
+  say "OpenCode config ($(printf '%s\n' "$ollama_ids" | grep -c .) Ollama, $(printf '%s\n' "$lms_ids" | grep -c . || true) LM Studio, $(printf '%s\n' "$cornell_ids" | grep -c . || true) Cornell models; sharing disabled)"
+
+  merge_json() {  # merge_json FILE JQ_EXPR
+    local f="$1" expr="$2" cur
+    cur="$( [ -s "$f" ] && cat "$f" || echo '{}')"
+    write_if_changed "$f" < <(printf '%s' "$cur" | jq "$expr")
+  }
+  merge_json "$HOME/.gemini/settings.json" '.privacy.usageStatisticsEnabled=false'
+  merge_json "$HOME/.claude/settings.json" '.env.DISABLE_TELEMETRY="1" | .env.DISABLE_ERROR_REPORTING="1"'
+  say "Telemetry off for Gemini CLI and Claude Code"
+else
+  note "jq not found — skipped OpenCode/Gemini/Claude settings (brew install jq)"
+fi
+
+# ---- 4. Git on a shared account ---------------------------------------------
+# No global identity: commits must come from a person (lab-login sets GIT_AUTHOR_*),
+# and credentials are never stored — GitHub pushes use the session's GH_TOKEN via gh.
+if command -v git >/dev/null && [ "$CHECK" = 0 ]; then
+  git config --global user.useConfigOnly true
+  git config --global init.defaultBranch main
+  git config --global --unset-all user.name  2>/dev/null || true
+  git config --global --unset-all user.email 2>/dev/null || true
+  git config --global --replace-all credential.helper ""          # disables macOS Keychain storage
+  if command -v gh >/dev/null; then
+    git config --global --replace-all credential.https://github.com.helper ""
+    git config --global --add credential.https://github.com.helper '!gh auth git-credential'
+  fi
+  say "Git: per-person identity via lab-login, no stored credentials"
+fi
+
+if [ "$CHECK" = 1 ]; then
+  [ "$changes" = 0 ] && say "Everything up to date" || note "$changes item(s) out of date — run lab-sync"
+else
+  [ "$changes" = 0 ] && say "Nothing changed" || say "$changes item(s) updated"
+  [ -d "$backup_dir" ] && note "Previous versions saved in $backup_dir"
+fi
+exit 0

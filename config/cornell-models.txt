@@ -1,0 +1,12 @@
+# Cornell AI Gateway models to show in OpenCode's model picker and to use as
+# defaults for Codex / Claude Code. One model id per line, exactly as the
+# gateway names it. To see the real list: run `lab-login`, then
+# `lab-models cornell`.
+#
+# The first line tagged `agent` is Codex's cornell profile model.
+# The first line tagged `claude` is what `claude-cornell` uses.
+#
+# <model-id>                     <tags>
+# [fill in after checking the gateway, e.g.:]
+# anthropic.claude-sonnet-...    claude agent
+# openai.gpt-...                 agent

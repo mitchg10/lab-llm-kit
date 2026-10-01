@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# claude-cornell — Claude Code through the Cornell AI Gateway (LiteLLM, Anthropic-compatible
+# /v1/messages). Run `lab-login` first. Same no-identifiers rule applies.
+#   claude-cornell                 uses the model tagged `claude` in config/cornell-models.txt
+#   claude-cornell -m <model-id>
+set -euo pipefail
+: "${CORNELL_AI_API_KEY:?Run 'lab-login' first to load your Cornell key}"
+case "${CORNELL_AI_BASE_URL:-}" in ""|*\[*) echo "CORNELL_AI_BASE_URL not set in config/lab.env" >&2; exit 1;; esac
+model="$( { grep -Ev '^\s*(#|$)' "$LAB_KIT/config/cornell-models.txt" 2>/dev/null || true; } | awk '{for(i=2;i<=NF;i++) if($i=="claude"){print $1; exit}}')"
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in -m|--model) model="$2"; shift 2 ;; *) args+=("$1"); shift ;; esac
+done
+[ -n "$model" ] || { echo "No model: pass -m <id> or tag one 'claude' in config/cornell-models.txt (see: lab models cornell)" >&2; exit 1; }
+export ANTHROPIC_BASE_URL="${CORNELL_AI_BASE_URL%/v1}"   # Claude Code appends /v1/messages
+export ANTHROPIC_AUTH_TOKEN="$CORNELL_AI_API_KEY" ANTHROPIC_API_KEY=""
+export ANTHROPIC_MODEL="$model" ANTHROPIC_DEFAULT_OPUS_MODEL="$model" ANTHROPIC_DEFAULT_SONNET_MODEL="$model"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="${CORNELL_FAST_MODEL:-$model}"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1
+echo "Claude Code → $model via Cornell AI Gateway" >&2
+exec claude --model "$model" ${args[@]+"${args[@]}"}

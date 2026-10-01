@@ -1,0 +1,25 @@
+# Starter model list — pulled by `lab-models pull-list` (setup step 04).
+# Format:  <source>  <model>        # note
+#   source = ollama | hf
+#   ollama  -> stored once in $OLLAMA_MODELS, then linked into LM Studio (no second copy)
+#   hf      -> stored once in $HF_HOME (MLX / transformers weights), linked into LM Studio
+#
+# Sized for a 192–256 GB Mac Studio (~170 GB of disk for the list below).
+# Model releases move fast: check https://ollama.com/library and
+# https://huggingface.co/mlx-community before each term and edit freely.
+
+# --- General analysis / qualitative work ------------------------------------
+ollama  qwen3:30b                 # MoE, fast, strong reasoning; default base for lab-qwen3
+ollama  gpt-oss:120b              # largest general model; slower, best for hard judgement calls
+ollama  llama3.3:70b              # dense 70B; widely used in published methods, good for replication
+ollama  gemma3:27b                # multimodal (images + text), good at summarising
+
+# --- Coding agents (Claude Code / Codex / OpenCode on local models) ---------
+ollama  qwen3-coder:30b           # tool-calling capable, 64k+ context
+
+# --- Embeddings (clustering, retrieval, similarity) -------------------------
+ollama  nomic-embed-text          # small, fast, standard
+ollama  qwen3-embedding:8b        # higher quality, multilingual
+
+# --- MLX weights (fastest on Apple Silicon; used by LM Studio and mlx-lm) ---
+hf      mlx-community/Qwen3-30B-A3B-4bit

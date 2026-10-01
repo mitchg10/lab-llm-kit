@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# lab-status — one-screen health check of the lab LLM setup.
+set -uo pipefail
+ok()   { printf '  \033[32m✓\033[0m %-28s %s\n' "$1" "${2:-}"; }
+bad()  { printf '  \033[31m✗\033[0m %-28s %s\n' "$1" "${2:-}"; fails=$((fails+1)); }
+meh()  { printf '  \033[33m•\033[0m %-28s %s\n' "$1" "${2:-}"; }
+fails=0
+ver() { "$@" 2>/dev/null | head -1 | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1; }
+
+echo; echo "  Lab LLM status — $(hostname -s) — $(date '+%Y-%m-%d %H:%M')"
+echo "  Kit: ${LAB_KIT:-?}   (git: $(git -C "${LAB_KIT:-/}" log -1 --format='%h %cs' 2>/dev/null || echo 'not a git checkout'))"
+echo
+
+echo "  Managers"
+if command -v brew >/dev/null; then ok brew "$(ver brew --version)"; else bad brew "missing"; fi
+# shellcheck disable=SC1091
+[ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ] && . "${NVM_DIR:-$HOME/.nvm}/nvm.sh"
+if type nvm >/dev/null 2>&1; then ok nvm "$(nvm --version 2>/dev/null)"; else bad nvm "missing"; fi
+if command -v node >/dev/null; then ok node "$(node --version)"; else bad node "missing (nvm install --lts)"; fi
+if command -v uv >/dev/null; then ok uv "$(ver uv --version)"; else bad uv "missing"; fi
+
+echo; echo "  Model servers"
+if v=$(curl -fsS -m 3 "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}/api/version" 2>/dev/null); then
+  n=$(curl -fsS -m 3 "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}/api/tags" | jq '.models|length' 2>/dev/null)
+  loaded=$(curl -fsS -m 3 "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}/api/ps" | jq -r '[.models[].name]|join(", ")' 2>/dev/null)
+  ok Ollama "$(echo "$v" | jq -r .version) · ${n:-?} models · loaded: ${loaded:-none}"
+else bad Ollama "not answering — launchctl kickstart -k gui/$(id -u)/edu.lab.ollama"; fi
+if curl -fsS -m 2 "${LMSTUDIO_BASE_URL:-http://127.0.0.1:1234}/v1/models" >/dev/null 2>&1; then ok "LM Studio server" "running on :1234"
+else meh "LM Studio server" "off (start in LM Studio › Developer, or: lms server start)"; fi
+case "${CORNELL_AI_BASE_URL:-}" in
+  ""|*\[*) meh "Cornell AI Gateway" "base URL not configured (config/lab.env)";;
+  *) [ -n "${CORNELL_AI_API_KEY:-}" ] && ok "Cornell AI Gateway" "key loaded for ${LAB_USER:-this window}" || meh "Cornell AI Gateway" "no key in this window (lab-login)";;
+esac
+
+echo; echo "  Agents"
+for a in opencode claude codex gemini labllm hf; do
+  if command -v "$a" >/dev/null; then ok "$a" "$(ver "$a" --version)"; else bad "$a" "missing"; fi
+done
+
+echo; echo "  Constitution & skills"
+if [ "${LAB_AGENT_CONSTITUTION:-on}" = on ]; then
+  for f in ~/.claude/CLAUDE.md ~/.codex/AGENTS.md ~/.gemini/GEMINI.md ~/.config/opencode/AGENTS.md; do
+    if [ -L "$f" ] && [ -e "$f" ]; then ok "${f/#$HOME/~}" "→ lab constitution"; else bad "${f/#$HOME/~}" "not linked (lab sync)"; fi
+  done
+else meh "agent constitution" "off (LAB_AGENT_CONSTITUTION=off in lab.env)"; fi
+[ -f "${LAB_DEFAULT_CHAT_PROMPT:-/nonexistent}" ] && ok "default chat prompt" "chat only; API sends users' own prompts" || bad "default chat prompt" "missing file"
+ns=$(find ~/.agents/skills -maxdepth 1 -type l 2>/dev/null | wc -l | tr -d ' ')
+nc=$(find ~/.claude/skills -maxdepth 1 -type l 2>/dev/null | wc -l | tr -d ' ')
+if [ "$ns" -gt 0 ]; then ok "skills" "$ns in ~/.agents/skills, $nc in ~/.claude/skills"; else bad skills "none linked (lab sync)"; fi
+if "${LAB_KIT:-.}/bin/lab-sync" --check --quiet 2>&1 | grep -q "out of date"; then meh "lab-sync" "changes pending — run: lab sync"; else ok "lab-sync" "up to date"; fi
+
+echo; echo "  Projects & git"
+if [ -d "${LAB_PROJECTS:-/nonexistent}" ]; then
+  np=$(find "$LAB_PROJECTS" -mindepth 3 -maxdepth 3 -name .git -type d 2>/dev/null | wc -l | tr -d ' ')
+  ok "projects" "$LAB_PROJECTS ($np git repos)"
+else bad "projects" "folder missing (./install.sh 01)"; fi
+if [ "$(git config --global --get user.useConfigOnly 2>/dev/null)" = true ]; then ok "git identity" "per person via lab-login${GIT_AUTHOR_NAME:+ (now: $GIT_AUTHOR_NAME)}"
+else meh "git identity" "shared-account guard not set (lab sync)"; fi
+if command -v gh >/dev/null; then ok gh "$(ver gh --version)${GH_TOKEN:+ · token loaded}"; else bad gh "missing (brew install gh)"; fi
+
+echo; echo "  Machine"
+mem=$(sysctl -n hw.memsize 2>/dev/null | awk '{printf "%.0f GB", $1/1073741824}')
+free=$(df -h "${LAB_MODELS:-/}" 2>/dev/null | awk 'NR==2{print $4}')
+ok "memory / free disk" "${mem:-?} / ${free:-?}"
+if fdesetup status 2>/dev/null | grep -q On; then ok FileVault on; else meh FileVault "off or unknown — turn it on"; fi
+
+echo
+[ $fails -eq 0 ] && echo "  All good." || echo "  $fails problem(s). See docs/ADMIN_GUIDE.md › Troubleshooting."
+exit $fails

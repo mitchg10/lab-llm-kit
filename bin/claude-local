@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# claude-local — Claude Code driven by a model on this Mac (nothing leaves the machine).
+#   claude-local                     uses $LAB_AGENT_MODEL on Ollama
+#   claude-local -m gpt-oss:120b     pick another Ollama model
+#   claude-local --lmstudio -m qwen/qwen3-coder-30b   use LM Studio's server instead
+# Any other arguments go straight to `claude`.
+set -euo pipefail
+model="${LAB_AGENT_MODEL:-qwen3-coder:30b}"
+base="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+token="ollama"
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -m|--model) model="$2"; shift 2 ;;
+    --lmstudio) base="${LMSTUDIO_BASE_URL:-http://127.0.0.1:1234}"; token="lm-studio"; shift ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+export ANTHROPIC_BASE_URL="$base" ANTHROPIC_AUTH_TOKEN="$token" ANTHROPIC_API_KEY=""
+export ANTHROPIC_MODEL="$model" ANTHROPIC_SMALL_FAST_MODEL="$model"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$model" ANTHROPIC_DEFAULT_SONNET_MODEL="$model" ANTHROPIC_DEFAULT_HAIKU_MODEL="$model"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1
+echo "Claude Code → $model at $base (local only)" >&2
+exec claude --model "$model" ${args[@]+"${args[@]}"}
