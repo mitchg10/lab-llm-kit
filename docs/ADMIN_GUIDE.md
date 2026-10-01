@@ -50,7 +50,7 @@ Agent wiring:
 ## Installing
 
 1. **Prepare.** Update macOS and turn on FileVault. Create the shared account with admin rights for the duration of setup. Unzip or clone the kit into its home folder.
-2. **Fill in `config/lab.env`.** In particular, set `CORNELL_AI_BASE_URL`: the gateway shows it when you create a key.
+2. **Create `config/lab.local.env`** (gitignored; it overrides `config/lab.env`, so the tracked file stays clean). Set the lab name, PI, `CORNELL_AI_BASE_URL` (the gateway shows it when you create a key) and the other site values. Then add your Cornell teams to `config/teams.txt` (see `docs/KEY_MANAGEMENT.md`).
 3. **Run `./install.sh`.** It runs `setup/01…05` in order. You can run individual steps with `./install.sh 03`. Every step is safe to re-run.
    - **01:** Xcode CLT, Homebrew, `/Users/Shared/lab-llm`, and a copy of the kit into it.
    - **02:** brew (ollama, lm-studio, git, jq); nvm → Node LTS → `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex`, `@google/gemini-cli`; uv → Python 3.12, `hf`, `mlx-lm`, `labllm`.
@@ -59,13 +59,13 @@ Agent wiring:
    - **05:** `lab-status`.
 4. **Open LM Studio once.** Then run `./install.sh 03` again so the `lms` CLI is set up. In LM Studio, check **My Models → Models Directory**: it should resolve to the shared folder.
 5. **Set the LM Studio preset by hand.** LM Studio can't be configured from a script. In **Chat → system prompt**, paste `constitution/DEFAULT_CHAT_PROMPT.md` and save it as a preset named "Lab constitution". Set it as the default for new chats. Users can still switch presets or write their own system prompt.
-6. **Get `cornell-models.txt` right.** Run `lab-login` with your key, then `lab-models cornell`. Copy the model IDs you want into `config/cornell-models.txt`, with tags `agent` and `claude`. Then run `lab sync`.
+6. **Get `cornell-models.txt` right.** Run `lab-key` in a project (or `lab-key <team>`), then `lab-models cornell`. Copy the model IDs you want into `config/cornell-models.txt`, with tags `agent` and `claude`. Then run `lab sync`.
 7. **GitHub for projects.**
    - Create a lab GitHub org, or use an existing Cornell one, with private repos by default.
-   - Set `LAB_GIT_REMOTE_BASE` in `lab.env`.
+   - Set `LAB_GIT_REMOTE_BASE` in `lab.local.env`.
    - Push the kit there. Tag `labllm` releases (`git tag labllm-v0.2.0`) and set `LABLLM_SOURCE` to `labllm @ git+https://github.com/<org>/lab-llm-kit@labllm-v0.2.0#subdirectory=labllm`. New projects then pin that version and can be cloned to laptops. Without it, projects point at the kit's folder on this Mac.
    - `lab-sync` configures git for a shared account. It sets no global identity (`user.useConfigOnly`), so `lab-login` supplies each person's name. It stores no credentials: pushes use the `GH_TOKEN` loaded by `lab-login`, through `gh`.
-8. **Optional hardening.** Demote the shared account to Standard after setup. Its tools all live in user space, so they keep working. Only LM Studio cask upgrades then need an admin.
+8. **Hardening (do this).** Demote the shared account to Standard after setup, so no student session can change the machine or other accounts' settings. Its tools all live in user space, so they keep working. Only LM Studio cask upgrades then need an admin.
 
 **Recommended: put the kit in git.** Push `/Users/Shared/lab-llm/kit` to a private lab GitHub repo. Then changes to the constitution and skills go through pull requests, and `lab update` pulls them. Without git, copy the new version over `kit/` and run `lab sync`.
 
@@ -95,7 +95,7 @@ Be honest with the lab about what this setup does and doesn't guarantee.
 
 - **Local only.** Ollama is bound to 127.0.0.1 through `OLLAMA_HOST`. Don't change it to `0.0.0.0` without talking to IT.
 - **Shared account means no privacy between users.** Anyone who logs in can read everything, including other people's agent histories (`~/.claude`, `~/.codex/sessions`, `~/.gemini`, `~/.local/share/opencode`). This setup is acceptable **only because** no identifiable data is allowed on the machine. If that rule ever changes, move to per-person macOS accounts first. The kit already keeps shared state under `/Users/Shared`, so that move is straightforward.
-- **Keys.** Cornell keys and GitHub tokens are entered per window with `lab-login` and are never written to disk. On a shared account, Keychain would expose them to everyone, so `lab-sync` turns off git's Keychain credential helper.
+- **Keys.** Cornell keys are per student and per team, loaded per window with `lab-key`; GitHub tokens are entered with `lab-login`. Neither is written to disk in plain text. Read `docs/KEY_MANAGEMENT.md` for the limits. On a shared account, Keychain would expose them to everyone, so `lab-sync` turns off git's Keychain credential helper.
 - **GitHub.** Project repos ignore `data/` and `outputs/`, notebook outputs are stripped, and the pre-commit hook blocks data files, large files and possible identifiers. The scan only runs where `labllm` is installed, so commits made on laptops have only the `.gitignore` protecting them.
 - **The identifier scan is a safety net, not a guarantee.** It catches emails, IDs, phone numbers, dates, addresses, name-like speaker labels and names from a list. It can't catch indirect identifiers. The real control is the rule that de-identification happens before data reaches this machine.
 - **Telemetry.** Claude Code and Gemini CLI telemetry are turned off, and OpenCode sharing is disabled. The `claude-local` wrapper turns off Claude Code's non-essential network traffic.
@@ -120,7 +120,7 @@ Be honest with the lab about what this setup does and doesn't guarantee.
 | OpenCode shows duplicate skills | Check that `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` is set (lab.env). |
 | Claude Code hangs on startup with a local model | Use `claude-local`, which sets `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. Use a model with a context of at least 32k. |
 | Codex can't call tools on a local model | Use `qwen3-coder:30b` or `gpt-oss:120b`. Small models handle tool calls poorly. |
-| Cornell calls fail with 401 | Keys expire every 90 days. Make a new key and run `lab-login` again. |
+| Cornell calls fail with 401 | Keys expire every 90 days. Issue a new key for that student and team in the Cornell dashboard, and have them run `lab-key` again. |
 | `Author identity unknown` on commit | Run `lab-login` in that window. This is deliberate: the shared account has no git identity. |
 | Commit blocked by the hook | Read its output. Unstage data files. Add confirmed false positives to the project's `.labscan-allow`. See `VERSION_CONTROL.md`. |
 | `lab-sync` says "Backed up …" | A file you or a student edited was replaced. The previous version is in `backups/<timestamp>/`. Make permanent changes in `kit/config/agents/`. |

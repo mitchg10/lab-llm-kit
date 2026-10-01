@@ -29,7 +29,7 @@ if curl -fsS -m 2 "${LMSTUDIO_BASE_URL:-http://127.0.0.1:1234}/v1/models" >/dev/
 else meh "LM Studio server" "off (start in LM Studio › Developer, or: lms server start)"; fi
 case "${CORNELL_AI_BASE_URL:-}" in
   ""|*\[*) meh "Cornell AI Gateway" "base URL not configured (config/lab.env)";;
-  *) [ -n "${CORNELL_AI_API_KEY:-}" ] && ok "Cornell AI Gateway" "key loaded for ${LAB_USER:-this window}" || meh "Cornell AI Gateway" "no key in this window (lab-login)";;
+  *) [ -n "${CORNELL_AI_API_KEY:-}" ] && ok "Cornell AI Gateway" "key loaded for ${LAB_USER:-this window}${LAB_TEAM:+ (team $LAB_TEAM)}" || meh "Cornell AI Gateway" "no key in this window (lab-key)";;
 esac
 
 echo; echo "  Agents"

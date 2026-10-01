@@ -14,7 +14,7 @@ Owner: __OWNER__ · Created: __DATE__ · IRB protocol: [number] · Status: activ
 ```bash
 uv sync                      # recreate the environment from uv.lock
 uv run quickstart.py         # sanity check
-uv run jupyter lab
+lab notebook                 # notebooks in your browser (model dropdown, autosave)
 ```
 
 ## Prompts

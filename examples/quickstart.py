@@ -47,5 +47,5 @@ try:
 except IdentifierError as e:
     print("\nBlocked as expected:\n", e)
 
-# 6. Cornell AI Gateway (after `lab-login` in this terminal):
+# 6. Cornell AI Gateway (after `lab-key` in this terminal):
 # print(LabLLM("cornell:<gateway-model-id>", system=system).chat("…").text)

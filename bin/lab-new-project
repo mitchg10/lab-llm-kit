@@ -6,15 +6,20 @@
 #   lab new <name> --github             …and create a private repo in the lab's GitHub org + push
 #   lab new <name> --remote <git-url>   …and push to an existing empty remote repo
 #   lab init [--github|--remote URL]    turn the CURRENT folder into a lab project (keeps its files)
+#   add --notebook to either: starter Jupyter notebook + model dropdown (then: lab notebook)
+#   add --team <slug> to name the Cornell team whose key this project uses (see config/teams.txt);
+#   without it you'll be asked to pick one. It's saved in .lab-project, and `lab-key` reads it.
 set -euo pipefail
 
-usage() { sed -n '2,9p' "$0"; exit "${1:-0}"; }
-here=0; remote=""; github=0; name=""
+usage() { sed -n '2,12p' "$0"; exit "${1:-0}"; }
+here=0; remote=""; github=0; notebook=0; name=""; team=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --here) here=1; shift ;;
     --github) github=1; shift ;;
+    --notebook) notebook=1; shift ;;
     --remote) remote="${2:?--remote needs a URL}"; shift 2 ;;
+    --team) team="${2:?--team needs a team slug}"; shift 2 ;;
     -h|--help) usage ;;
     -*) echo "unknown option $1"; usage 1 ;;
     *) name="$1"; shift ;;
@@ -22,6 +27,7 @@ while [ $# -gt 0 ]; do
 done
 
 KIT="${LAB_KIT:?open a new terminal so lab.env is loaded}"
+bindir="$(cd "$(dirname "$0")" && pwd)"
 say()  { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 note() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 
@@ -47,6 +53,24 @@ else
 fi
 mkdir -p "$dir"/{data,prompts,outputs,notebooks}
 cd "$dir"
+
+# ---- which Cornell team pays for this project? (.lab-project; no secrets in it) ----
+teams_file="$KIT/config/teams.txt"
+known_teams=$(sed -e 's/#.*//' "$teams_file" 2>/dev/null | awk 'NF{print $1}')
+if [ -z "$team" ] && [ -f .lab-project ]; then team=$(head -n 1 .lab-project | tr -d '[:space:]'); fi
+if [ -z "$team" ] && [ -n "$known_teams" ] && [ -t 0 ]; then
+  echo "  Which Cornell team is this project billed to?"
+  i=1; while IFS= read -r t; do printf '    %d) %s\n' "$i" "$t"; i=$((i+1)); done <<< "$known_teams"
+  read -r -p "  Number (Return to decide later): " pick
+  [[ "$pick" =~ ^[0-9]+$ ]] && team=$(printf '%s\n' "$known_teams" | sed -n "${pick}p")
+fi
+if [ -n "$team" ]; then
+  [[ "$team" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || { echo "Team names are lowercase letters, digits, - _ . (got '$team')"; exit 1; }
+  if [ -n "$known_teams" ] && ! printf '%s\n' "$known_teams" | grep -qx -- "$team"; then
+    echo "Team '$team' isn't in config/teams.txt — ask the PI which team to use."; exit 1
+  fi
+  [ -e .lab-project ] || printf '%s\n' "$team" > .lab-project
+fi
 pkg="$(echo "$name" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9\n' '-')"
 
 # ---- Python environment (uv) --------------------------------------------------
@@ -58,6 +82,7 @@ fi
 uv add -q pandas jupyterlab
 uv add --dev nbstripout >/dev/null 2>&1 || true
 say "uv environment (labllm, pandas, jupyterlab) — add more with: uv add <package>"
+[ "$notebook" = 1 ] && "$bindir/lab-notebook" --setup && say "starter notebook: notebooks/quickstart.ipynb (model dropdown, autosave)"
 
 # ---- starter files (never overwrite existing ones) --------------------------------
 cpnew() { [ -e "$2" ] || cp "$1" "$2"; }
@@ -104,10 +129,15 @@ fi
 
 echo
 say "Project ready: $dir"
+if [ -n "$team" ]; then say "Cornell team: $team (in .lab-project) — load your key with: lab-key"
+else note "No Cornell team set. Add one later: echo <team> > .lab-project   (teams: $teams_file)"; fi
+notebook_hint=""
+[ "$notebook" = 1 ] && notebook_hint='    lab notebook                # open the starter notebook in your browser
+'
 cat <<EOF
     cd "$dir"
     uv run quickstart.py        # check the models answer
-    uv run jupyter lab          # notebooks
+${notebook_hint}    uv run jupyter lab          # notebooks
     git add -A && git commit -m "…"   # save a version (data/ and outputs/ are never committed)
   Version control help: $KIT/docs/VERSION_CONTROL.md
 EOF

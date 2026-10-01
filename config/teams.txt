@@ -1,0 +1,6 @@
+# Cornell AI Gateway teams the PI has set up, one per line: <slug>   <optional description>
+# A project's .lab-project file names one of these. Slugs: lowercase letters, digits, - _ .
+# Not secret. Keys are never listed here; each student gets their own key per team from the
+# gateway dashboard. While this list has no entries, any valid slug is accepted.
+#
+# example-team    Example project (delete this line)

@@ -29,6 +29,21 @@ while IFS= read -r f; do
   if [ "$size" -gt 5000000 ]; then red "$f is $((size/1000000)) MB — large files are usually data. Keep it out of git."; fail=1; fi
 done <<< "$staged"
 
+# 2b. credentials pasted into files. Cornell keys are personal and capped, but must still never reach
+#     git or GitHub. Needs no labllm, so it also protects commits made on a laptop.
+#     (Reports file names only, never the matched text.)
+secret_re='sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(CORNELL_AI_API_KEY|GH_TOKEN)[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9_.-]{16,}'
+leaky=""
+while IFS= read -r f; do
+  git show ":$f" 2>/dev/null | grep -Iqs -E "$secret_re" && leaky+="$f"$'\n'
+done <<< "$staged"
+if [ -n "$leaky" ]; then
+  red "These files contain what looks like a credential (API key, token or private key):"
+  printf '%s' "$leaky" | sed 's/^/    /' >&2
+  echo "    Remove it and load keys with lab-key instead. If one was ever committed or pushed, tell the PI so it can be revoked." >&2
+  fail=1
+fi
+
 # 3. identifier scan of staged text (the version being committed, not the working copy)
 if command -v labllm >/dev/null 2>&1; then
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT

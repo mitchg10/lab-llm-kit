@@ -9,8 +9,12 @@ cat <<EOF
   Lab LLM tools  (lab constitution: $LAB_CONSTITUTION)
 
   START HERE
-    lab-login              who you are (logs + git), Cornell key, GitHub token — this window only
+    lab-login              who you are (logs + git) and GitHub token — this window only
+    lab-key                load your Cornell key for this project's team — this window only
+    lab ui                 the same thing with buttons — no commands to remember
     lab new <project>      new project: its own git repo + Python (uv), outside the lab tools
+                           (add --notebook for a starter Jupyter notebook)
+    lab notebook           open this project's notebooks in your browser
     lab init               make the current folder a lab project (git + uv + safety hook)
     lab scan <file>        check a file for identifiers BEFORE giving it to any model
 
@@ -18,7 +22,7 @@ cat <<EOF
     labllm chat            chat with a local model in the terminal (labllm --help for more)
     opencode               coding/analysis agent — pick local or Cornell models inside
     claude-local           Claude Code running on a local model
-    claude-cornell         Claude Code via the Cornell AI Gateway (needs lab-login)
+    claude-cornell         Claude Code via the Cornell AI Gateway (needs lab-key)
     codex                  Codex on a local model  (codex --profile cornell for the gateway)
     open -a "LM Studio"    chat app (the PI's favourite)
 
@@ -41,6 +45,8 @@ case "$cmd" in
   login)   echo "Type:  lab-login   (it has to run in your current window, so it's a separate command)";;
   new)     exec "$here/lab-new-project" "$@" ;;
   init)    exec "$here/lab-new-project" --here "$@" ;;
+  ui)      exec "$here/lab-ui" "$@" ;;
+  notebook) exec "$here/lab-notebook" "$@" ;;
   scan)    exec "$here/lab-scan" "$@" ;;
   models)  exec "$here/lab-models" "$@" ;;
   status)  exec "$here/lab-status" "$@" ;;

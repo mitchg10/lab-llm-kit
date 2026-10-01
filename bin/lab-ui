@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# lab-ui — point-and-click version of lab-login / lab new / lab notebook / git save.
+# Opens in your browser; stays on this Mac only. Close the window or press Ctrl+C to quit.
+set -euo pipefail
+: "${LAB_KIT:?open a new terminal so lab.env is loaded}"
+exec uv run --project "$LAB_KIT/ui" streamlit run "$LAB_KIT/ui/app.py" \
+  --server.address 127.0.0.1 --server.headless false --browser.gatherUsageStats false "$@"

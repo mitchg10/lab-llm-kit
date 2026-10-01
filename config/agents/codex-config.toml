@@ -3,7 +3,7 @@
 #
 #   codex                      -> local Ollama (default; data stays on this Mac)
 #   codex --profile lmstudio   -> LM Studio server (start it first: `lms server start`)
-#   codex --profile cornell    -> Cornell AI Gateway (run `lab-login` first)
+#   codex --profile cornell    -> Cornell AI Gateway (run `lab-key` first)
 
 model = "__LAB_AGENT_MODEL__"
 model_provider = "ollama-lab"

@@ -19,7 +19,7 @@ Commands
   make-lab-variants         build `lab-<model>` chat models: same weights + the lab's DEFAULT chat prompt
   link-lmstudio             expose Ollama + HF models inside LM Studio (symlinks, no copies)
   du                        disk use per store
-  cornell                   list models on the Cornell AI Gateway (needs `lab-login`)
+  cornell                   list models on the Cornell AI Gateway (needs `lab-key`)
   recommend                 what fits in this Mac's memory
 """
 from __future__ import annotations
@@ -309,7 +309,7 @@ def cmd_cornell(_args):
     base = ENV.get("CORNELL_AI_BASE_URL", "")
     key = ENV.get("CORNELL_AI_API_KEY", "")
     if not key or "[" in base:
-        sys.exit("Run `lab-login` first (and set CORNELL_AI_BASE_URL in config/lab.env).")
+        sys.exit("Run `lab-key` first, inside your project (and set CORNELL_AI_BASE_URL in config/lab.env).")
     req = urllib.request.Request(base.rstrip("/") + "/models", headers={"Authorization": f"Bearer {key}"})
     with urllib.request.urlopen(req, timeout=15) as r:
         data = json.load(r)

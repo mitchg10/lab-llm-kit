@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# lab-notebook — open this project's notebooks in your browser (JupyterLab).
+#
+#   lab notebook            from anywhere inside a lab project: set up (first time) and open
+#   lab-notebook --setup    only add the notebook starter files to the current project
+#
+# Notebooks are saved automatically in the project's notebooks/ folder. Everything runs on this
+# Mac only (127.0.0.1) and is protected by a one-time token.
+set -euo pipefail
+
+KIT="${LAB_KIT:?open a new terminal so lab.env is loaded}"
+say()  { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+note() { printf '  \033[33m!\033[0m %s\n' "$*"; }
+
+# project root = nearest folder (here or above) with a pyproject.toml
+root="$PWD"
+while [ "$root" != "/" ] && [ ! -f "$root/pyproject.toml" ]; do root="$(dirname "$root")"; done
+[ -f "$root/pyproject.toml" ] || { echo "Not inside a lab project. Create one with: lab new <name> --notebook"; exit 1; }
+cd "$root"
+
+setup() {
+  settings=.jupyter/lab-settings/@jupyterlab/docmanager-extension
+  mkdir -p notebooks "$settings"
+  if ! grep -q 'ipywidgets' pyproject.toml; then uv add -q ipywidgets; fi
+  [ -e notebooks/quickstart.ipynb ] || cp "$KIT/examples/quickstart.ipynb" notebooks/quickstart.ipynb
+  # save notebooks every 10 seconds
+  [ -e "$settings/plugin.jupyterlab-settings" ] || cp "$KIT/config/project-template/jupyterlab-docmanager.json" "$settings/plugin.jupyterlab-settings"
+}
+
+if [ "${1:-}" = "--setup" ]; then setup; exit 0; fi
+setup
+say "Opening notebooks for $(basename "$root") — leave this window open; press Ctrl+C twice to stop."
+export JUPYTERLAB_SETTINGS_DIR="$root/.jupyter/lab-settings"
+exec uv run jupyter lab notebooks/quickstart.ipynb \
+  --ServerApp.ip=127.0.0.1 --ServerApp.port_retries=50 --ServerApp.root_dir="$root"

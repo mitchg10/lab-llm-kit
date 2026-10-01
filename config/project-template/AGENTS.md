@@ -6,7 +6,7 @@ This is a research project in its own git repository. The lab's global instructi
 - `data/` holds de-identified inputs. It is git-ignored. **Run `lab scan <file>` before reading anything in here.**
 - `outputs/` holds model outputs and call logs. It is git-ignored.
 - `prompts/` holds system prompts and user-prompt templates. These are versioned; don't edit a used prompt, create `_v2` instead.
-- `notebooks/` holds analysis notebooks. Outputs are stripped on commit.
+- `notebooks/` holds analysis notebooks. Outputs are stripped on commit. `lab notebook` opens them; `labllm.notebook.pick_model()` gives a model dropdown whose choice is saved in `.lab-notebook.json`. Never put API keys in a notebook.
 
 ## Conventions
 - Python through uv only: `uv add <pkg>`, `uv run <script>`.

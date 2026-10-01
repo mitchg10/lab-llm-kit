@@ -11,7 +11,7 @@ Every backend speaks the **OpenAI-compatible API**, so code written for one work
 |---|---|---|---|
 | Ollama (default) | `http://127.0.0.1:11434/v1` | any value | `qwen3:30b` |
 | LM Studio (server must be started) | `http://127.0.0.1:1234/v1` | any value | `lmstudio:<id from lms ls>` |
-| Cornell AI Gateway | `$CORNELL_AI_BASE_URL` | `$CORNELL_AI_API_KEY` (set with `lab-login`) | `cornell:<gateway id>` |
+| Cornell AI Gateway | `$CORNELL_AI_BASE_URL` | `$CORNELL_AI_API_KEY` (set with `lab-key`) | `cornell:<gateway id>` |
 
 ## Prompts belong to the user
 
@@ -50,7 +50,7 @@ llm.chat("…", json_schema=schema).json()                           # structure
 LabLLM("qwen3:30b", save_to="outputs/calls.jsonl")                 # full prompt/response record (git-ignored)
 LabLLM(system=DEFAULT).chat("…")                                   # opt in to the lab's chat prompt
 llm.embed(["text one", "text two"])                                # $LAB_EMBED_MODEL
-LabLLM("cornell:<gateway-model-id>", system="…").chat("…")         # after lab-login
+LabLLM("cornell:<gateway-model-id>", system="…").chat("…")         # after lab-key
 ```
 
 ## Command line

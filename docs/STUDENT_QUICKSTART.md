@@ -14,6 +14,13 @@ Only data that has been de-identified under your IRB protocol comes to this mach
 
 Everyone shares this Mac account, so **everyone can see your files and chat histories.** Keep that in mind.
 
+## Prefer buttons to commands?
+
+Double-click **Lab** (`bin/Lab.command`) or type `lab ui`. A page opens in your browser where you
+can sign in, create a project, open its notebook, and **Save to GitHub** with one click. It does
+the same things as steps 1, 2 and the notebook below. Your details stay in that window only. If
+the safety check blocks a save, the page tells you why; take the flagged files out and try again.
+
 ## 1. Start a session
 
 Open **Terminal** and type:
@@ -23,7 +30,9 @@ lab-login
 It asks for:
 - your NetID
 - your name and email, so your git commits are yours and not the shared account's
-- optionally, your Cornell gateway key and a GitHub token
+- optionally, a GitHub token
+
+Your Cornell gateway key is separate. The PI gives you one key per team (project group). Inside a project, type `lab-key` and it loads the key for that project's team, so the right key always goes with the right project. If you work on a project from another team, `cd` into it and run `lab-key` again.
 
 These only last for that one window, and nothing is saved. Type `lab` any time to see the menu.
 
@@ -37,6 +46,8 @@ This gives you a project that is separate from the lab's tools:
 - a Python environment (uv) with `labllm`, pandas and Jupyter
 - starter prompts in `prompts/`
 - a git repo with its first commit already made
+
+**Prefer notebooks?** Add `--notebook` (`lab new my-study --notebook`), then run `lab notebook` inside the project. Your browser opens a starter notebook with a **Model dropdown** (local models, LM Studio, and the Cornell gateway after `lab-login`) and example cells you can edit and re-run with Shift+Enter. Your choice of model is remembered, and your notebook saves itself every 10 seconds in the project's `notebooks/` folder. Leave the terminal window open while you work; press Ctrl+C twice to stop. Already have a project? Run `lab notebook` inside it and it adds the starter notebook.
 
 The `data/` and `outputs/` folders are **never** committed. A safety check blocks commits that contain identifiers, data files or recordings.
 
@@ -68,7 +79,7 @@ llm = LabLLM("qwen3:30b", system="prompts/system_coding.md", save_to="outputs/ca
 user = Path("prompts/code_excerpt.md").read_text().format(speaker="P03", text="…excerpt…")
 print(llm.chat(user).text)
 ```
-Run it with `uv run my_script.py`, or open `uv run jupyter lab`. Need a package? Use `uv add <package>`, never `pip install`.
+Run it with `uv run my_script.py`, or open notebooks with `lab notebook`. Need a package? Use `uv add <package>`, never `pip install`.
 
 **A whole spreadsheet of excerpts:**
 ```
@@ -83,7 +94,7 @@ labllm batch data/excerpts.csv --text-col text \
 ```
 opencode            # choose a model with /models: "Ollama (this Mac)" or "Cornell AI Gateway"
 claude-local        # Claude Code on a local model
-claude-cornell      # Claude Code via the Cornell gateway (after lab-login)
+claude-cornell      # Claude Code via the Cornell gateway (after lab-key)
 codex               # Codex on a local model;  codex --profile cornell  for the gateway
 ```
 

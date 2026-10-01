@@ -1,6 +1,7 @@
 # lab-login — identify yourself (run logs + git commits) and optionally load your
-# Cornell AI Gateway key and GitHub token, for THIS terminal window only.
-# Nothing is written to disk.
+# GitHub token, for THIS terminal window only. Nothing is written to disk.
+# Your Cornell AI Gateway key is per team/project: see bin/lab-key (lab-login runs it
+# when you start from inside a project folder).
 #
 #   lab-login        (an alias defined in lab.env that runs `source $LAB_KIT/bin/lab-login`;
 #                     it has to be sourced so the settings land in your current window)
@@ -8,6 +9,7 @@
 # Why not save the key? Everyone shares this macOS account, so anything saved
 # (files, Keychain, shell history) is readable by every lab member.
 
+_lab_start="$PWD"
 printf 'Your NetID: '
 read -r LAB_USER
 export LAB_USER
@@ -20,15 +22,6 @@ _e="${_e:-$LAB_USER@cornell.edu}"
 export GIT_AUTHOR_NAME="$_n" GIT_COMMITTER_NAME="$_n" GIT_AUTHOR_EMAIL="$_e" GIT_COMMITTER_EMAIL="$_e"
 unset _n _e
 
-printf 'Cornell AI Gateway key (press Return to skip; input is hidden): '
-stty -echo 2>/dev/null; read -r _k; stty echo 2>/dev/null; echo
-if [ -n "$_k" ]; then
-  export CORNELL_AI_API_KEY="$_k"
-  echo "✓ Cornell key loaded for this window. Close the window to forget it."
-  case "$CORNELL_AI_BASE_URL" in *\[*) echo "! CORNELL_AI_BASE_URL is still a placeholder in config/lab.env — ask the lab admin.";; esac
-fi
-unset _k
-
 printf 'GitHub token for pushing your repos (press Return to skip; hidden): '
 stty -echo 2>/dev/null; read -r _g; stty echo 2>/dev/null; echo
 if [ -n "$_g" ]; then
@@ -40,4 +33,17 @@ unset _g
 unset HISTFILE 2>/dev/null
 export PS1="[${LAB_USER}] ${PS1:-%# }"
 echo "✓ Logged in as $LAB_USER ($GIT_AUTHOR_NAME). Your projects: $LAB_PROJECTS/$LAB_USER"
-mkdir -p "$LAB_PROJECTS/$LAB_USER" && cd "$LAB_PROJECTS/$LAB_USER" || true
+# Cornell key: one per team, chosen by the project folder. If you ran lab-login from inside a
+# project, stay there and load that project's key; otherwise go to your projects folder.
+_d="$_lab_start"; _in_project=0
+while [ -n "$_d" ] && [ "$_d" != "/" ]; do
+  if [ -f "$_d/.lab-project" ]; then _in_project=1; break; fi
+  _d=$(dirname "$_d")
+done
+if [ "$_in_project" = 1 ]; then
+  source "$LAB_KIT/bin/lab-key"
+else
+  mkdir -p "$LAB_PROJECTS/$LAB_USER" && cd "$LAB_PROJECTS/$LAB_USER" || true
+  echo "Cornell key: cd into a project and run  lab-key  (it picks the right team from the project)."
+fi
+unset _lab_start _d _in_project

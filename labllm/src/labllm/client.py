@@ -240,7 +240,7 @@ class LabLLM:
 
         rec = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "user": ENV.get("LAB_USER") or getpass.getuser(),
+            "user": ENV.get("LAB_USER") or getpass.getuser(), "team": ENV.get("LAB_TEAM", ""),
             "backend": backend, "model": mdl, "served_model": getattr(resp, "model", mdl),
             "model_digest": ollama_digest(mdl) if backend == "ollama" else "",
             "temperature": temperature, "seed": seed, "json_schema": bool(json_schema),
@@ -262,8 +262,8 @@ class LabLLM:
         backend, mdl = resolve_model(model or ENV.get("LAB_EMBED_MODEL", "nomic-embed-text"), "ollama")
         resp = self._client(backend).embeddings.create(model=mdl, input=texts)
         self._log({"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                   "user": ENV.get("LAB_USER") or getpass.getuser(), "backend": backend, "model": mdl,
-                   "kind": "embedding", "n": len(texts), "prompt_sha256": _sha(json.dumps(texts))})
+                   "user": ENV.get("LAB_USER") or getpass.getuser(), "team": ENV.get("LAB_TEAM", ""),
+                   "backend": backend, "model": mdl, "kind": "embedding", "n": len(texts), "prompt_sha256": _sha(json.dumps(texts))})
         return [d.embedding for d in resp.data]
 
     def models(self, backend: str | None = None) -> list[str]:

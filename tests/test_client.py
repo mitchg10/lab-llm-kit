@@ -49,6 +49,17 @@ def test_resolve_model():
     assert resolve_model("lmstudio:qwen/qwen3") == ("lmstudio", "qwen/qwen3")
 
 
+def test_log_records_the_cornell_team_of_the_window(server, monkeypatch):
+    monkeypatch.setenv("LAB_TEAM", "soc-media-2026")
+    LabLLM("qwen3:30b").chat("hi")
+    log = [json.loads(l) for l in (server / "logs/labllm.jsonl").read_text().splitlines()]
+    assert log[-1]["team"] == "soc-media-2026"
+    monkeypatch.delenv("LAB_TEAM")
+    LabLLM("qwen3:30b").chat("hi")
+    log = [json.loads(l) for l in (server / "logs/labllm.jsonl").read_text().splitlines()]
+    assert log[-1]["team"] == ""
+
+
 def test_api_sends_only_your_prompts(server):
     llm = LabLLM("qwen3:30b", save_to=server / "run.jsonl")
     r = llm.chat("Code this excerpt: P01 said the workload doubled.")

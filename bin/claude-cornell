@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # claude-cornell — Claude Code through the Cornell AI Gateway (LiteLLM, Anthropic-compatible
-# /v1/messages). Run `lab-login` first. Same no-identifiers rule applies.
+# /v1/messages). Run `lab-key` inside your project first. Same no-identifiers rule applies.
 #   claude-cornell                 uses the model tagged `claude` in config/cornell-models.txt
 #   claude-cornell -m <model-id>
 set -euo pipefail
-: "${CORNELL_AI_API_KEY:?Run 'lab-login' first to load your Cornell key}"
+: "${CORNELL_AI_API_KEY:?Run 'lab-key' (inside your project) to load your Cornell key}"
 case "${CORNELL_AI_BASE_URL:-}" in ""|*\[*) echo "CORNELL_AI_BASE_URL not set in config/lab.env" >&2; exit 1;; esac
 model="$( { grep -Ev '^\s*(#|$)' "$LAB_KIT/config/cornell-models.txt" 2>/dev/null || true; } | awk '{for(i=2;i<=NF;i++) if($i=="claude"){print $1; exit}}')"
 args=()

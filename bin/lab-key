@@ -1,0 +1,105 @@
+# lab-key — load YOUR Cornell AI Gateway key for the project you're working in,
+# for THIS terminal window only. Nothing is written to disk in plain text.
+#
+#   lab-key              the team comes from the .lab-project file in this project (or a parent folder)
+#   lab-key <team>       load your key for a specific team (e.g. when you're not inside a project)
+#   lab-key --auto       used by the cd hook: only prints a hint when this project's team differs
+#                        from the key in your window; never prompts and never loads anything
+#
+# (an alias defined in lab.env that runs `source $LAB_KIT/bin/lab-key`; it has to be
+#  sourced so the key lands in your current window.)
+#
+# The PI issues each student one key per Cornell team (with its own spending cap) in the
+# gateway dashboard. A project belongs to one team, named in its .lab-project file, so
+# the right key goes with the right project. Where the key comes from is LAB_KEY_BACKEND:
+#   prompt  (default)  type or paste it; it lives only in this window
+#   age                kept encrypted under $LAB_PROJECTS/<netid>/.keys/<team>.age with your own
+#                      passphrase, so you type the passphrase once per window instead of the key.
+#                      Everyone shares this account, so use a strong passphrase.
+
+_lab_key_team_of() {  # walk up from $1 looking for .lab-project; print its team slug
+  local d="$1"
+  while [ -n "$d" ]; do
+    if [ -f "$d/.lab-project" ]; then head -n 1 "$d/.lab-project" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; return 0; fi
+    [ "$d" = "/" ] && break
+    d=$(dirname "$d")
+  done
+  return 1
+}
+
+_lab_key_prompt() {  # hidden prompt on the terminal; the key itself goes to stdout
+  local k
+  printf 'Cornell key for team %s (Return to skip; input is hidden): ' "$1" >&2
+  stty -echo 2>/dev/null; read -r k; stty echo 2>/dev/null; echo >&2
+  printf '%s' "$k"
+}
+
+_lab_key_age() {  # decrypt this student's saved key, or ask for it once and save it encrypted
+  local f k
+  [ -n "${LAB_USER:-}" ] || { echo "Run lab-login first: your saved keys are filed under your NetID." >&2; return 1; }
+  command -v age >/dev/null 2>&1 || { echo "age isn't installed (brew install age). Or use LAB_KEY_BACKEND=prompt." >&2; return 1; }
+  f="$LAB_PROJECTS/$LAB_USER/.keys/$1.age"
+  if [ -f "$f" ]; then age -d "$f"; return; fi   # age asks for the passphrase on the terminal
+  k=$(_lab_key_prompt "$1")
+  [ -n "$k" ] || return 1
+  mkdir -p "$(dirname "$f")" && chmod 700 "$(dirname "$f")"
+  printf '%s' "$k" | age -p -o "$f" || { rm -f "$f"; return 1; }
+  printf '%s' "$k"
+}
+
+_lab_key_run() {
+  local auto=0 team="" cur="${LAB_TEAM:-}" a listed k
+  for a in "$@"; do
+    case "$a" in
+      --auto) auto=1;;
+      -*) echo "usage: lab-key [team]" >&2; return 2;;
+      *) team="$a";;
+    esac
+  done
+
+  if [ "$auto" = 1 ]; then
+    [ -n "${LAB_USER:-}" ] || return 0
+    team=$(_lab_key_team_of "$PWD") || return 0
+    [ "$team" = "$cur" ] && return 0
+    if [ -n "$cur" ]; then echo "! This project uses Cornell team '$team', but this window has the key for '$cur'. Run: lab-key"
+    else echo "! This project uses Cornell team '$team'. Run: lab-key   to load your key for it."; fi
+    return 0
+  fi
+
+  if [ -z "$team" ]; then
+    team=$(_lab_key_team_of "$PWD") || {
+      echo "No .lab-project file here, so I can't tell which Cornell team this is." >&2
+      echo "cd into a project, or name the team: lab-key <team>   (new projects: lab new <name> --team <team>)" >&2
+      return 1
+    }
+  fi
+  case "$team" in
+    ""|-*|.*|*[!a-z0-9._-]*) echo "'$team' isn't a valid team name (lowercase letters, digits, - _ . only)." >&2; return 1;;
+  esac
+  listed=$(sed -e 's/#.*//' "${LAB_TEAMS_FILE:-${LAB_KIT:-}/config/teams.txt}" 2>/dev/null | awk 'NF{print $1}')
+  if [ -n "$listed" ] && ! printf '%s\n' "$listed" | grep -qx -- "$team"; then
+    echo "Team '$team' isn't in config/teams.txt. Ask the PI which team your project belongs to." >&2
+    return 1
+  fi
+
+  # never leave another team's key in the window when switching projects
+  if [ -n "$cur" ] && [ "$cur" != "$team" ]; then unset CORNELL_AI_API_KEY LAB_TEAM; fi
+
+  case "${LAB_KEY_BACKEND:-prompt}" in
+    prompt) k=$(_lab_key_prompt "$team");;
+    age) k=$(_lab_key_age "$team");;
+    *) echo "Unknown LAB_KEY_BACKEND '${LAB_KEY_BACKEND}' (use prompt or age)." >&2; return 1;;
+  esac
+  if [ -z "$k" ]; then echo "No key loaded for team '$team'. Ask the PI for one in the Cornell dashboard." >&2; return 1; fi
+  export CORNELL_AI_API_KEY="$k" LAB_TEAM="$team"
+  echo "✓ Cornell key for team '$team' loaded for this window. Close the window to forget it."
+  case "${CORNELL_AI_BASE_URL:-}" in *\[*) echo "! CORNELL_AI_BASE_URL is still a placeholder in config/lab.env — ask the lab admin.";; esac
+}
+
+_lab_key_main() {
+  local rc
+  _lab_key_run "$@"; rc=$?
+  unset -f _lab_key_team_of _lab_key_prompt _lab_key_age _lab_key_run _lab_key_main
+  return $rc
+}
+_lab_key_main "$@"

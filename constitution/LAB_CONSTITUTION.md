@@ -63,7 +63,7 @@ Treat all of the following as identifiers. When in doubt, treat it as one.
 - **Everyone can see everything.** All files, shell history, agent chat histories (`~/.claude`, `~/.codex`, `~/.gemini`, OpenCode sessions) and logs are readable by every lab member.
 - Keep each project in its own git repository under `/Users/Shared/research/<your-netid>/<project>/` (`lab new`). De-identified data goes in the project's `data/` folder, which is never committed.
 - Run `lab-login` at the start of each session, so run logs and git commits carry your name instead of the shared account's.
-- **Keys are per-session.** Run `lab-login` to set your Cornell key for one terminal window. Do not write it into files, notebooks, `.env` files or shell profiles. Rotate it when the gateway requires (every 90 days).
+- **Keys are per-session and per-team.** Run `lab-key` inside a project to load your own Cornell key for that project's team, for one terminal window. Never use another person's key. Do not write a key into files, notebooks, `.env` files or shell profiles. Rotate it when the gateway requires (every 90 days).
 - Raw data, consent forms, recordings and linking keys stay on the storage your protocol names, such as an approved Cornell server or Box folder, and not here.
 - Don't copy lab data to USB drives or personal cloud folders from this machine.
 - When a project ends, delete its working files here and note that in the project README.

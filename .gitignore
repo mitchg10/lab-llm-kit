@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.venv/
+
+# local overrides and secrets: never commit
+*.local.env
+.env
+.env.*
+*.key
+*.pem
+.claude/settings.local.json
+.serena/

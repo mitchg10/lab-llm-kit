@@ -8,7 +8,7 @@ llm = LabLLM("qwen3:30b", system="prompts/system.md")     # your system prompt (
 llm.chat("your user prompt")
 llm.chat(messages=[{"role": "system", "content": "…"}, {"role": "user", "content": "…"}])
 LabLLM("lmstudio:qwen/qwen3-30b-a3b")                      # LM Studio
-LabLLM("cornell:<id>")                                     # Cornell gateway (after lab-login)
+LabLLM("cornell:<id>")                                     # Cornell gateway (after lab-key)
 LabLLM(system=DEFAULT)                                     # opt in to the lab's default chat prompt
 ```
 

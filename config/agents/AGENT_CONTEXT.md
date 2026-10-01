@@ -9,7 +9,7 @@ You are running on the lab's shared Mac Studio (Apple Silicon, large unified mem
 - **Local model servers.** These are bound to this machine only and are not reachable from the network.
   - Ollama at `http://127.0.0.1:11434`. It has an OpenAI-compatible API at `/v1` and an Anthropic-compatible API at `/v1/messages`. Models whose names start with `lab-` have the lab's system prompt built in.
   - LM Studio at `http://127.0.0.1:1234/v1`, when its server is started.
-- **Cornell AI Gateway.** It speaks the OpenAI-compatible API and is available at `$CORNELL_AI_BASE_URL` when the user has run `lab-login`.
+- **Cornell AI Gateway.** It speaks the OpenAI-compatible API and is available at `$CORNELL_AI_BASE_URL` when the user has run `lab-key`.
 - **Package managers.** Always use these; never use system Python, `sudo pip` or a global `npm install` into system paths.
   - Python: `uv` (`uv init`, `uv add <pkg>`, `uv run script.py`, `uv tool install <cli>`).
   - Node: `nvm` (`nvm use --lts`).
